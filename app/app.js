@@ -306,10 +306,9 @@ function stopRadio() { state.radio = null; save(); updateNowPlaying(); render();
 const cache = {}; // songs seen in search results but not saved to the library
 function meta(id) { return state.songs[id] || cache[id] || state.queueMeta?.[id] || state.history.find((h) => h.id === id) || { id, title: id, author: '' }; }
 const EQ = '<span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>';
-// thumbnail with an equalizer overlay when this is the current song (shown on phones and cards)
+// song thumbnail; covers stay clean, the playing state shows on the row and title instead
 function thumbBox(id, cls = '', q = 'default') {
-  const on = id === currentId();
-  return `<span class="thumb-box ${cls}"><img src="${thumb(id, q)}" alt="" loading="lazy">${on ? `<span class="cover-eq">${EQ}</span>` : ''}</span>`;
+  return `<span class="thumb-box ${cls}"><img src="${thumb(id, q)}" alt="" loading="lazy"></span>`;
 }
 function saveSong(r) {
   if (state.songs[r.id]) return false;
