@@ -5,7 +5,7 @@ const { Downloader, safeName } = require('./downloader');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { handleApi } = require('./search');
+const { handleApi } = require('./youtube');
 
 const ROOT = path.join(__dirname, 'app');
 const TYPES = {

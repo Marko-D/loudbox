@@ -16,7 +16,7 @@ const TYPES = {
   '.json': 'application/json',
 };
 
-const { handleApi } = require('./search');
+const { handleApi } = require('./youtube');
 
 http.createServer(async (req, res) => {
   if (await handleApi(req, res)) return;

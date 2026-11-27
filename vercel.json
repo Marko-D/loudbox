@@ -1,11 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
   "installCommand": "echo \"No install needed: the web version has no dependencies\"",
   "buildCommand": "",
   "outputDirectory": "app",
-  "functions": {
-    "api/*.js": { "maxDuration": 15 }
-  },
   "headers": [
     {
       "source": "/sw.js",
