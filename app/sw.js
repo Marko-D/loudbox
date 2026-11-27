@@ -1,6 +1,6 @@
-// Caches the app shell so the installed app opens without the local server.
+﻿// Caches the app shell so the installed app opens without the local server.
 // YouTube and other cross-origin requests always go to the network.
-const CACHE = 'loudbox-v5';
+const CACHE = 'loudbox-v6';
 const SHELL = ['/', '/index.html', '/app.js', '/styles.css', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (e) => {

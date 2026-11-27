@@ -305,6 +305,12 @@ function stopRadio() { state.radio = null; save(); updateNowPlaying(); render();
 
 const cache = {}; // songs seen in search results but not saved to the library
 function meta(id) { return state.songs[id] || cache[id] || state.queueMeta?.[id] || state.history.find((h) => h.id === id) || { id, title: id, author: '' }; }
+const EQ = '<span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>';
+// thumbnail with an equalizer overlay when this is the current song (shown on phones and cards)
+function thumbBox(id, cls = '', q = 'default') {
+  const on = id === currentId();
+  return `<span class="thumb-box ${cls}"><img src="${thumb(id, q)}" alt="" loading="lazy">${on ? `<span class="cover-eq">${EQ}</span>` : ''}</span>`;
+}
 function saveSong(r) {
   if (state.songs[r.id]) return false;
   state.songs[r.id] = { id: r.id, title: r.title, author: r.author, addedAt: Date.now() };
@@ -525,6 +531,10 @@ function updateNowPlaying() {
   $('#bar-artist').textContent = s ? s.author : '';
   const bt = $('#bar-thumb');
   if (s) { bt.src = thumb(s.id, 'default'); bt.hidden = false; } else bt.hidden = true;
+  $('#bar-cover').hidden = !s;
+  $('#bar-eq').hidden = !s;
+  $('.bar-track').classList.toggle('active', !!s);
+  updateSaveButton();
   const upcoming = state.queue.slice(state.qi + 1, state.qi + 6);
   $('#np-next').innerHTML = upcoming.length
     ? upcoming.map((u, k) => miniRow(u, state.qi + 1 + k)).join('')
@@ -676,8 +686,8 @@ function trackList(ids, { context, showAdded = true, when, whenHead = 'Added' } 
     const s = meta(id);
     const playingHere = id === cur;
     return `<div class="track ${playingHere ? 'playing' : ''}" data-row="${i}" data-id="${id}">
-      <div class="num">${playingHere ? '<span class="eq"><i></i><i></i><i></i></span>' : `<span class="idx">${i + 1}</span>`}<button class="hover-play icon-btn small" data-play-row="${i}" aria-label="Play ${esc(s.title)}">${ICON.play}</button></div>
-      <div class="main-col"><img src="${thumb(id, 'default')}" alt="" loading="lazy"><div class="tt"><div class="title">${dlMark(id)}${esc(s.title)}</div><div class="artist">${esc(s.author)}</div></div></div>
+      <div class="num">${playingHere ? EQ : `<span class="idx">${i + 1}</span>`}<button class="hover-play icon-btn small" data-play-row="${i}" aria-label="Play ${esc(s.title)}">${ICON.play}</button></div>
+      <div class="main-col">${thumbBox(id)}<div class="tt"><div class="title">${dlMark(id)}${esc(s.title)}</div><div class="artist">${esc(s.author)}</div></div></div>
       <div class="col">${esc(context?.label || s.author)}</div>
       <div class="when">${when ? when(id) : showAdded && s.addedAt ? ago(s.addedAt) : ''}</div>
       <button class="icon-btn more" data-more="${id}" data-ctx="${context?.playlistId || ''}" data-qi="${context?.queue ? i : ''}" aria-label="More options for ${esc(s.title)}">${ICON.more}</button>
@@ -687,6 +697,7 @@ function trackList(ids, { context, showAdded = true, when, whenHead = 'Added' } 
 }
 
 function render() {
+  if (typeof updateSaveButton === 'function') updateSaveButton();
   document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.view === view.name));
   renderSidebar();
   const main = $('#main');
@@ -818,8 +829,8 @@ function render() {
 function songCard(id, ctxIds, sub) {
   const s = meta(id);
   if (!s) return '';
-  return `<div class="card" role="button" tabindex="0" data-card-play="${id}" data-ctx-ids="${ctxIds.join(',')}">
-    <img class="thumb" src="${thumb(id)}" alt="" loading="lazy">
+  return `<div class="card ${id === currentId() ? 'playing' : ''}" role="button" tabindex="0" data-card-play="${id}" data-ctx-ids="${ctxIds.join(',')}">
+    ${thumbBox(id, 'card-thumb', 'mqdefault')}
     <div><div class="name">${esc(s.title)}</div><div class="sub">${esc(sub ?? s.author)}</div></div></div>`;
 }
 
@@ -829,8 +840,8 @@ function queueList(indices) {
     const id = state.queue[qi];
     const s = meta(id);
     return `<div class="track ${qi === cur ? 'playing' : ''}" data-id="${id}" data-q-row="${qi}">
-      <div class="num">${qi === cur ? '<span class="eq"><i></i><i></i><i></i></span>' : `<span class="idx">${qi - cur}</span>`}<button class="hover-play icon-btn small" data-jump="${qi}" aria-label="Play">${ICON.play}</button></div>
-      <div class="main-col"><img src="${thumb(id, 'default')}" alt="" loading="lazy"><div class="tt"><div class="title">${dlMark(id)}${esc(s.title)}</div><div class="artist">${esc(s.author)}</div></div></div>
+      <div class="num">${qi === cur ? EQ : `<span class="idx">${qi - cur}</span>`}<button class="hover-play icon-btn small" data-jump="${qi}" aria-label="Play">${ICON.play}</button></div>
+      <div class="main-col">${thumbBox(id)}<div class="tt"><div class="title">${dlMark(id)}${esc(s.title)}</div><div class="artist">${esc(s.author)}</div></div></div>
       <div class="col"></div><div class="when"></div>
       <button class="icon-btn more" data-more="${id}" data-qi="${qi}" aria-label="More options">${ICON.more}</button></div>`;
   }).join('')}</div>`;
@@ -841,8 +852,8 @@ function searchList(from, to) {
     const i = from + k;
     const inLib = !!state.songs[r.id];
     return `<div class="track ${r.id === currentId() ? 'playing' : ''}" data-id="${r.id}" data-search-row="${i}">
-      <div class="num">${r.id === currentId() ? '<span class="eq"><i></i><i></i><i></i></span>' : `<span class="idx">${i + 1}</span>`}<button class="hover-play icon-btn small" data-search-play="${i}" aria-label="Play ${esc(r.title)}">${ICON.play}</button></div>
-      <div class="main-col"><img src="${thumb(r.id, 'default')}" alt="" loading="lazy"><div class="tt"><div class="title">${esc(r.title)}</div><div class="artist">${esc(r.author)}${r.views ? ' · ' + esc(r.views) + ' views' : ''}</div></div></div>
+      <div class="num">${r.id === currentId() ? EQ : `<span class="idx">${i + 1}</span>`}<button class="hover-play icon-btn small" data-search-play="${i}" aria-label="Play ${esc(r.title)}">${ICON.play}</button></div>
+      <div class="main-col">${thumbBox(r.id)}<div class="tt"><div class="title">${esc(r.title)}</div><div class="artist">${esc(r.author)}${r.views ? ' · ' + esc(r.views) + ' views' : ''}</div></div></div>
       <button class="icon-btn save ${inLib ? 'on' : ''}" data-search-add="${i}" title="${inLib ? 'In your library' : 'Save to library'}" aria-label="${inLib ? 'In your library' : 'Save to library'}">${inLib ? '<svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z"/></svg>'}</button>
       <div class="when dur">${esc(r.duration || '')}</div>
       <button class="icon-btn more" data-search-more="${i}" aria-label="More options">${ICON.more}</button></div>`;
@@ -1076,7 +1087,22 @@ $('#new-playlist').onclick = () => newPlaylist();
 $('#bar-radio').onclick = () => { const id = currentId(); if (!id) return toast('Play a song first, then start its radio'); state.radio && state.radio.seed === id ? stopRadio() : startRadio(id); };
 $('#bar-lyrics').onclick = toggleLyrics;
 $('#bar-dl').onclick = () => { const id = currentId(); if (id) downloadSongs([id]); else toast('Nothing is playing'); };
-$('#bar-like').onclick = (e) => { e.stopPropagation(); const id = currentId(); if (id) songMenu(e.currentTarget, id); else toast('Nothing is playing'); };
+const ICON_PLUS = '<svg viewBox="0 0 24 24"><path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z"/></svg>';
+const ICON_SAVED = '<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm4.3 6.3L10.5 14l-2.8-2.8-1.4 1.4 4.2 4.2 7.2-7.1z"/></svg>';
+function updateSaveButton() {
+  const b = $('#bar-like'), id = currentId(), saved = !!(id && state.songs[id]);
+  b.innerHTML = saved ? ICON_SAVED : ICON_PLUS;
+  b.classList.toggle('on', saved);
+  const label = saved ? 'Saved in your library. Click to add to a playlist' : 'Save to your library';
+  b.title = label; b.setAttribute('aria-label', label);
+}
+$('#bar-like').onclick = (e) => {
+  e.stopPropagation();
+  const id = currentId();
+  if (!id) return toast('Nothing is playing');
+  if (!state.songs[id]) { saveSong(meta(id)); updateSaveButton(); render(); return toast('Saved to your library'); }
+  songMenu(e.currentTarget, id);
+};
 $('#np-next').addEventListener('click', (e) => { const b = e.target.closest('[data-jump]'); if (b) { e.stopPropagation(); state.qi = Number(b.dataset.jump); loadCurrent(true); } });
 $('#volume').addEventListener('input', (e) => setVolume(Number(e.target.value)));
 const seekEl = $('#seek');
