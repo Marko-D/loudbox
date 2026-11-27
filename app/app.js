@@ -48,7 +48,7 @@ function defaultState() {
     songs,
     playlists: [{ id: uid(), name: 'Starter mix', songIds: STARTER.map((s) => s[0]), createdAt: now }],
     queue: [], qi: -1, shuffle: false, repeat: 'off', volume: 80, muted: false,
-    showVideo: true, apiKey: '', recent: [], history: [], downloaded: {}, radio: null,
+    showVideo: true, apiKey: '', recent: [], history: [], downloaded: {}, radio: null, autoRadio: true,
   };
 }
 let state;
@@ -276,16 +276,32 @@ async function startRadio(id) {
 }
 // when radio is on and fewer than 4 songs remain, add more based on the current song
 async function extendRadio() {
-  if (!state.radio || radioLoading || state.queue.length - state.qi > 4) return;
+  if (radioLoading || !currentId()) return;
+  const left = state.queue.length - 1 - state.qi;
+  const autoplayNow = !state.radio && state.autoRadio && state.repeat === 'off' && left === 0;
+  if (!(state.radio && left < 4) && !autoplayNow) return;
   radioLoading = true;
+  const seed = currentId();
   try {
     const recentSet = new Set([...state.queue.slice(-150), ...state.recent]);
-    const fresh = (await fetchRadio(currentId())).map((x) => x.id).filter((x) => !recentSet.has(x));
-    if (fresh.length && state.radio) { state.queue.push(...fresh.slice(0, 20)); save(); updateNowPlaying(); if (view.name === 'queue') render(); }
+    const fresh = (await fetchRadio(seed)).map((x) => x.id).filter((x) => !recentSet.has(x));
+    const stillWanted = state.radio || (state.autoRadio && state.repeat === 'off' && currentId() === seed);
+    if (fresh.length && stillWanted) {
+      state.queue.push(...fresh.slice(0, 20));
+      if (!state.radio) state.radio = { seed, title: meta(seed).title, auto: true };
+      save(); updateNowPlaying(); if (view.name === 'queue') render();
+    }
   } catch {}
   radioLoading = false;
 }
-function stopRadio() { state.radio = null; save(); updateNowPlaying(); render(); toast('Radio off'); }
+function setAutoRadio(on) {
+  state.autoRadio = on;
+  if (!on && state.radio?.auto) state.radio = null; // stop topping up; songs already queued stay
+  save(); updateNowPlaying(); render();
+  toast(on ? 'Autoplay on: similar songs play when your music ends' : 'Autoplay off');
+  if (on) extendRadio();
+}
+function stopRadio() { state.radio = null; save(); updateNowPlaying(); render(); toast(state.autoRadio ? 'Radio off. Autoplay is still on for when your music ends' : 'Radio off'); }
 
 const cache = {}; // songs seen in search results but not saved to the library
 function meta(id) { return state.songs[id] || cache[id] || state.queueMeta?.[id] || state.history.find((h) => h.id === id) || { id, title: id, author: '' }; }
@@ -434,8 +450,9 @@ function toggleShuffle() {
 }
 function cycleRepeat() {
   state.repeat = { off: 'all', all: 'one', one: 'off' }[state.repeat];
-  save(); updateControls();
+  save(); updateControls(); updateNowPlaying();
   toast({ off: 'Repeat off', all: 'Repeat all', one: 'Repeat this song' }[state.repeat]);
+  extendRadio();
 }
 function playNext(id) {
   if (state.qi < 0) { playQueue([id]); return; }
@@ -511,7 +528,7 @@ function updateNowPlaying() {
   const upcoming = state.queue.slice(state.qi + 1, state.qi + 6);
   $('#np-next').innerHTML = upcoming.length
     ? upcoming.map((u, k) => miniRow(u, state.qi + 1 + k)).join('')
-    : `<div class="hint">${state.repeat === 'all' && state.queue.length ? 'Queue repeats from the start' : 'Nothing queued after this one'}</div>`;
+    : `<div class="hint">${state.repeat === 'all' && state.queue.length ? 'Queue repeats from the start' : state.autoRadio && state.repeat === 'off' && state.queue.length ? 'Autoplay will add similar songs' : 'Nothing queued after this one'}</div>`;
   if ('mediaSession' in navigator && s) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: s.title, artist: s.author, album: 'Loudbox',
@@ -726,7 +743,9 @@ function render() {
     const upcoming = state.queue.slice(state.qi + 1);
     main.innerHTML = `
       <div class="section"><h2 style="font-size:32px;margin-top:28px">Queue</h2>
-        ${state.radio ? `<div class="radio-banner">${ICON.radio}<div><b>${esc(state.radio.title)} Radio</b><span>Similar songs keep coming as you listen</span></div><button class="btn ghost" data-stop-radio>Stop radio</button></div>` : ''}</div>
+        ${state.radio ? `<div class="radio-banner">${ICON.radio}<div><b>${esc(state.radio.title)} Radio</b><span>${state.radio.auto ? 'Your music ended, so Autoplay is playing similar songs' : 'Similar songs keep coming as you listen'}</span></div><button class="btn ghost" data-stop-radio>Stop radio</button></div>` : ''}
+        <label class="autoplay-row" for="autoplay-toggle"><span><b>Autoplay</b><small>When your music ends, keep playing similar songs</small></span>
+          <input type="checkbox" id="autoplay-toggle" class="switch" role="switch" ${state.autoRadio ? 'checked' : ''}></label></div>
       ${cur ? `<div class="section"><h2>Now playing</h2></div>${queueList([state.qi])}` : '<div class="empty"><strong>Nothing is playing</strong>Play a playlist or a song to fill the queue.</div>'}
       ${upcoming.length ? `<div class="section" style="display:flex;justify-content:space-between;align-items:center"><h2>Next up</h2><button class="btn ghost" id="clear-queue">Clear</button></div>${queueList(upcoming.map((_, k) => state.qi + 1 + k))}` : ''}`;
   }
@@ -1016,6 +1035,9 @@ document.addEventListener('submit', async (e) => {
     if (f.id === 'search-form') runTopSearch(q); else runTopSearch($('#tb-search-input').value);
     return;
   }
+});
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'autoplay-toggle') setAutoRadio(e.target.checked);
 });
 document.addEventListener('input', (e) => {
   if (e.target.id === 'lib-filter') {

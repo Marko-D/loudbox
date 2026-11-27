@@ -482,3 +482,14 @@ body.blurred .tb-brand { opacity: .6; }
   .track { grid-template-columns: minmax(0, 1fr) 44px; }
   .nowpanel .video-wrap { bottom: calc(var(--bar-h) + 70px); }
 }
+
+/* ---------- autoplay switch ---------- */
+.autoplay-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 4px 0 8px; padding: 12px 16px; border-radius: 12px; background: var(--raise); cursor: pointer; }
+.autoplay-row span { display: flex; flex-direction: column; min-width: 0; }
+.autoplay-row small { color: var(--muted); font-size: 13px; }
+.switch { -webkit-appearance: none; appearance: none; flex: none; width: 46px; height: 26px; border-radius: 13px; background: var(--line); position: relative; cursor: pointer; transition: background .15s; margin: 0; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--text); transition: transform .15s; }
+.switch:checked { background: var(--accent); }
+.switch:checked::after { transform: translateX(20px); background: var(--accent-ink); }
+/* the radio label belongs to the now-playing panel; hide it wherever that panel is collapsed */
+@media (max-width: 1180px), (max-height: 420px) { .nowpanel > .np-label.on-radio { display: none; } }
