@@ -1193,6 +1193,7 @@ if (W) {
   W.onState(applyWinState);
   W.getState().then(applyWinState);
 }
+else $('#get-app').hidden = false;
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { closeMenu(); closeModal(); return; }
