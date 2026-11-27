@@ -9,6 +9,9 @@ There is also a portable `.exe` that runs without installing.
 
 Windows will show *"Windows protected your PC"* because the app isn't code-signed. Click **More info → Run anyway**.
 
+Prefer the browser? Use it at **https://loudbox-six.vercel.app** (no downloads or mini player there).
+The website counts page views with Vercel Web Analytics, which uses no cookies and no personal data.
+
 ## Features
 
 - **Search** songs and artists, with suggestions as you type (no API key needed)
