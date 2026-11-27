@@ -792,7 +792,7 @@ function queueList(indices) {
   return `<div class="tracks">${indices.map((qi) => {
     const id = state.queue[qi];
     const s = meta(id);
-    return `<div class="track ${qi === cur ? 'playing' : ''}" data-id="${id}">
+    return `<div class="track ${qi === cur ? 'playing' : ''}" data-id="${id}" data-q-row="${qi}">
       <div class="num">${qi === cur ? '<span class="eq"><i></i><i></i><i></i></span>' : `<span class="idx">${qi - cur}</span>`}<button class="hover-play icon-btn small" data-jump="${qi}" aria-label="Play">${ICON.play}</button></div>
       <div class="main-col"><img src="${thumb(id, 'default')}" alt="" loading="lazy"><div class="tt"><div class="title">${dlMark(id)}${esc(s.title)}</div><div class="artist">${esc(s.author)}</div></div></div>
       <div class="col"></div><div class="when"></div>
@@ -943,6 +943,13 @@ function toast(msg) {
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button, [data-open-pl], [data-card-play], [data-search-play], [data-idea], [data-suggest], [data-close], .modal-back');
   if (!$('#menu').hidden && !e.target.closest('#menu')) closeMenu();
+  const row = e.target.closest('.track');
+  if (row && !e.target.closest('button, a, input')) {
+    if (row.dataset.id === currentId() && row.dataset.qRow === undefined) return togglePlay();
+    if (row.dataset.row !== undefined) return playQueue($('#main').__ids || [], Number(row.dataset.row));
+    if (row.dataset.searchRow !== undefined) return playQueue(searchResults.map((r) => r.id), Number(row.dataset.searchRow));
+    if (row.dataset.qRow !== undefined) { const qi = Number(row.dataset.qRow); if (qi === state.qi) return togglePlay(); state.qi = qi; return loadCurrent(true); }
+  }
   if (!t) return;
   const d = t.dataset;
   if (t.id === 'modal' && e.target === t) return closeModal();
@@ -982,13 +989,7 @@ document.addEventListener('click', (e) => {
   if (t.id === 'clear-queue') { state.queue = state.queue.slice(0, state.qi + 1); save(); render(); return updateNowPlaying(); }
 });
 // double-click a row to play it
-document.addEventListener('dblclick', (e) => {
-  if (e.target.closest('button')) return;
-  const row = e.target.closest('.track[data-row]');
-  if (row) playQueue($('#main').__ids || [], Number(row.dataset.row));
-  const srow = e.target.closest('.track[data-search-row]');
-  if (srow) playQueue(searchResults.map((r) => r.id), Number(srow.dataset.searchRow));
-});
+// rows play on a single click/tap (see the click handler above)
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.matches('[role=button]')) e.target.click();
 });
@@ -1036,7 +1037,7 @@ $('#new-playlist').onclick = () => newPlaylist();
 $('#bar-radio').onclick = () => { const id = currentId(); if (!id) return toast('Play a song first, then start its radio'); state.radio && state.radio.seed === id ? stopRadio() : startRadio(id); };
 $('#bar-lyrics').onclick = toggleLyrics;
 $('#bar-dl').onclick = () => { const id = currentId(); if (id) downloadSongs([id]); else toast('Nothing is playing'); };
-$('#bar-like').onclick = (e) => { const id = currentId(); if (id) songMenu(e.currentTarget, id); else toast('Nothing is playing'); };
+$('#bar-like').onclick = (e) => { e.stopPropagation(); const id = currentId(); if (id) songMenu(e.currentTarget, id); else toast('Nothing is playing'); };
 $('#np-next').addEventListener('click', (e) => { const b = e.target.closest('[data-jump]'); if (b) { e.stopPropagation(); state.qi = Number(b.dataset.jump); loadCurrent(true); } });
 $('#volume').addEventListener('input', (e) => setVolume(Number(e.target.value)));
 const seekEl = $('#seek');
