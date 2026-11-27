@@ -1,6 +1,6 @@
 // Caches the app shell so the installed app opens without the local server.
 // YouTube and other cross-origin requests always go to the network.
-const CACHE = 'loudbox-v4';
+const CACHE = 'loudbox-v5';
 const SHELL = ['/', '/index.html', '/app.js', '/styles.css', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -16,7 +16,7 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  if (e.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/_vercel/')) return;
   // Network first, so updates show up when the server runs; cache when it doesn't.
   e.respondWith(
     fetch(e.request)
