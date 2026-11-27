@@ -48,14 +48,31 @@ function defaultState() {
     songs,
     playlists: [{ id: uid(), name: 'Starter mix', songIds: STARTER.map((s) => s[0]), createdAt: now }],
     queue: [], qi: -1, shuffle: false, repeat: 'off', volume: 80, muted: false,
-    showVideo: true, apiKey: '', recent: [], downloaded: {}, radio: null,
+    showVideo: true, apiKey: '', recent: [], history: [], downloaded: {}, radio: null,
   };
 }
 let state;
 try { state = JSON.parse(localStorage.getItem(KEY)) || defaultState(); } catch { state = defaultState(); }
 state = Object.assign(defaultState(), state);
+// older versions kept only song ids; turn them into history entries
+if (!state.history.length && state.recent.length) {
+  state.history = state.recent.map((id, i) => ({ id, title: state.songs[id]?.title || id, author: state.songs[id]?.author || '', playedAt: Date.now() - i * 60000, plays: 1 }));
+}
 let saveTimer;
-const save = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} }, 150); };
+const save = () => {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    // remember titles of queued songs that aren't in the library, so the queue survives a restart
+    const qm = {};
+    for (const id of state.queue) {
+      if (state.songs[id] || qm[id]) continue;
+      const m = meta(id);
+      if (m.title && m.title !== id) qm[id] = { id, title: m.title, author: m.author || '', duration: m.duration || '' };
+    }
+    state.queueMeta = qm;
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {}
+  }, 150);
+};
 
 let view = { name: 'home' };
 let player = null, playerReady = false, isPlaying = false, seeking = false;
@@ -271,7 +288,7 @@ async function extendRadio() {
 function stopRadio() { state.radio = null; save(); updateNowPlaying(); render(); toast('Radio off'); }
 
 const cache = {}; // songs seen in search results but not saved to the library
-function meta(id) { return state.songs[id] || cache[id] || { id, title: id, author: '' }; }
+function meta(id) { return state.songs[id] || cache[id] || state.queueMeta?.[id] || state.history.find((h) => h.id === id) || { id, title: id, author: '' }; }
 function saveSong(r) {
   if (state.songs[r.id]) return false;
   state.songs[r.id] = { id: r.id, title: r.title, author: r.author, addedAt: Date.now() };
@@ -327,6 +344,11 @@ window.onYouTubeIframeAPIReady = () => {
           if (d && s && (s.title === 'Loading title…' || s.title.startsWith('YouTube video ')) && d.title) {
             s.title = d.title; s.author = d.author || s.author; save(); render();
           }
+          const h = state.history.find((x) => x.id === currentId());
+          if (h && d && d.title && (h.title === h.id || h.title === 'Loading title…' || h.title.startsWith('YouTube video '))) {
+            h.title = d.title; h.author = d.author || h.author; save();
+            if (view.name === 'home' || view.name === 'history') render();
+          }
         }
         if (e.data === YT.PlayerState.ENDED) onEnded();
         updatePlayState();
@@ -366,7 +388,10 @@ function shuffled(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { c
 function loadCurrent(autoplay) {
   const id = currentId();
   if (!id) return;
-  state.recent = [id, ...state.recent.filter((r) => r !== id)].slice(0, 20);
+  const m = meta(id), prev = state.history.find((h) => h.id === id);
+  state.history = [{ id, title: m.title, author: m.author, playedAt: Date.now(), plays: (prev?.plays || 0) + 1 },
+    ...state.history.filter((h) => h.id !== id)].slice(0, 200);
+  state.recent = state.history.slice(0, 20).map((h) => h.id);
   save();
   if (playerReady) autoplay ? player.loadVideoById(id) : player.cueVideoById(id);
   updateNowPlaying(); render();
@@ -610,7 +635,7 @@ function cover(ids, cls = '') {
   return `<div class="cover ${cls}">${pics.map((p) => `<img src="${thumb(p, 'mqdefault')}" alt="" loading="lazy">`).join('')}</div>`;
 }
 
-function trackList(ids, { context, showAdded = true } = {}) {
+function trackList(ids, { context, showAdded = true, when, whenHead = 'Added' } = {}) {
   if (!ids.length) return '';
   const cur = currentId();
   const rows = ids.map((id, i) => {
@@ -620,11 +645,11 @@ function trackList(ids, { context, showAdded = true } = {}) {
       <div class="num">${playingHere ? '<span class="eq"><i></i><i></i><i></i></span>' : `<span class="idx">${i + 1}</span>`}<button class="hover-play icon-btn small" data-play-row="${i}" aria-label="Play ${esc(s.title)}">${ICON.play}</button></div>
       <div class="main-col"><img src="${thumb(id, 'default')}" alt="" loading="lazy"><div class="tt"><div class="title">${dlMark(id)}${esc(s.title)}</div><div class="artist">${esc(s.author)}</div></div></div>
       <div class="col">${esc(context?.label || s.author)}</div>
-      <div class="when">${showAdded ? ago(s.addedAt) : ''}</div>
+      <div class="when">${when ? when(id) : showAdded && s.addedAt ? ago(s.addedAt) : ''}</div>
       <button class="icon-btn more" data-more="${id}" data-ctx="${context?.playlistId || ''}" data-qi="${context?.queue ? i : ''}" aria-label="More options for ${esc(s.title)}">${ICON.more}</button>
     </div>`;
   }).join('');
-  return `<div class="tracks"><div class="track-head"><div class="num">#</div><div>Title</div><div class="col">${context?.colHead || 'Channel'}</div><div class="when">Added</div><div></div></div>${rows}</div>`;
+  return `<div class="tracks"><div class="track-head"><div class="num">#</div><div>Title</div><div class="col">${context?.colHead || 'Channel'}</div><div class="when">${whenHead}</div><div></div></div>${rows}</div>`;
 }
 
 function render() {
@@ -637,18 +662,33 @@ function render() {
   if (view.name === 'home') {
     const hour = new Date().getHours();
     const greet = hour < 5 ? 'Late night listening' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-    const recent = state.recent.filter((id) => state.songs[id]).slice(0, 8);
+    const recent = state.history.slice(0, 8);
+    const recentIds = recent.map((h) => h.id);
     main.innerHTML = `
       <div class="hero"><div class="hero-text"><div class="eyebrow">Loudbox</div><h1>${greet}</h1>
         <div class="stats">${lib.length} songs · ${state.playlists.length} playlists</div></div></div>
       <div class="section">
         <form class="field" id="quick-add"><input class="input" id="quick-input" placeholder="Paste a YouTube video or playlist link" autocomplete="off"><button class="btn" type="submit">Add</button></form>
       </div>
+      ${recent.length ? `<div class="section"><div class="section-head"><h2>Recently played</h2>${state.history.length > recent.length ? `<button class="show-all" data-view="history">Show all</button>` : ''}</div>
+        <div class="grid recent-grid">${recent.map((h) => songCard(h.id, recentIds, `${meta(h.id).author ? meta(h.id).author + ' · ' : ''}${ago(h.playedAt)}`)).join('')}</div></div>` : ''}
       ${state.playlists.length ? `<div class="section"><h2>Your playlists</h2><div class="grid">${state.playlists.map((p) => `
         <div class="card" role="button" tabindex="0" data-open-pl="${p.id}">${cover(p.songIds)}<div><div class="name">${esc(p.name)}</div><div class="sub">${p.songIds.length} songs</div></div>
         <button class="float-play" data-play-pl="${p.id}" aria-label="Play ${esc(p.name)}">${ICON.play}</button></div>`).join('')}</div></div>` : ''}
-      ${recent.length ? `<div class="section"><h2>Recently played</h2><div class="grid">${recent.map((id) => songCard(id, recent)).join('')}</div></div>` : ''}
       <div class="section"><h2>Recently added</h2>${lib.length ? `<div class="grid">${lib.slice(0, 8).map((s) => songCard(s.id, lib.map((x) => x.id))).join('')}</div>` : '<p class="hint">Your library is empty. Paste a link above to add your first song.</p>'}</div>`;
+  }
+
+  else if (view.name === 'history') {
+    const ids = state.history.map((h) => h.id);
+    const when = {}; state.history.forEach((h) => (when[h.id] = h.playedAt));
+    main.__ids = ids;
+    main.innerHTML = `
+      <div class="hero" style="--hero:#3fa77a">${cover(ids)}<div class="hero-text"><div class="eyebrow">History</div><h1>Recently played</h1><div class="stats">${ids.length} songs · kept on this computer</div></div></div>
+      <div class="actions">
+        <button class="big-play" data-play-view ${ids.length ? '' : 'disabled'} aria-label="Play recently played">${ICON.play}</button>
+        ${ids.length ? '<button class="btn ghost" id="clear-history">Clear history</button>' : ''}
+      </div>
+      ${ids.length ? trackList(ids, { when: (id) => ago(when[id]), whenHead: 'Played' }) : '<div class="empty"><strong>Nothing played yet</strong>Songs you listen to will show up here.</div>'}`;
   }
 
   else if (view.name === 'library') {
@@ -739,12 +779,12 @@ function render() {
   updatePlayState();
 }
 
-function songCard(id, ctxIds) {
-  const s = state.songs[id];
+function songCard(id, ctxIds, sub) {
+  const s = meta(id);
   if (!s) return '';
   return `<div class="card" role="button" tabindex="0" data-card-play="${id}" data-ctx-ids="${ctxIds.join(',')}">
     <img class="thumb" src="${thumb(id)}" alt="" loading="lazy">
-    <div><div class="name">${esc(s.title)}</div><div class="sub">${esc(s.author)}</div></div></div>`;
+    <div><div class="name">${esc(s.title)}</div><div class="sub">${esc(sub ?? s.author)}</div></div></div>`;
 }
 
 function queueList(indices) {
@@ -812,7 +852,8 @@ function songMenu(anchor, id, { playlistId, qi } = {}) {
   items.push('-', { text: 'Open on YouTube', run: () => window.open(`https://www.youtube.com/watch?v=${id}`, '_blank', 'noopener') });
   items.push({ text: 'Copy link', run: () => copy(`https://www.youtube.com/watch?v=${id}`) });
   if (playlistId) items.push('-', { text: 'Remove from this playlist', danger: true, run: () => removeFromPlaylist(id, playlistId) });
-  if (s && !playlistId && qi === undefined) items.push('-', { text: 'Remove from library', danger: true, run: () => confirmBox(`Remove “${s.title}”?`, 'It will also be removed from every playlist.', 'Remove', () => removeSong(id)) });
+  if (view.name === 'history') items.push('-', { text: 'Remove from history', danger: true, run: () => { state.history = state.history.filter((h) => h.id !== id); state.recent = state.history.slice(0, 20).map((h) => h.id); save(); render(); } });
+  if (s && !playlistId && qi === undefined && view.name !== 'history') items.push('-', { text: 'Remove from library', danger: true, run: () => confirmBox(`Remove “${s.title}”?`, 'It will also be removed from every playlist.', 'Remove', () => removeSong(id)) });
   openMenu(anchor, items);
 }
 
@@ -937,6 +978,7 @@ document.addEventListener('click', (e) => {
   if ('lyrRetry' in d) { const id = currentId(); if (id) { const L = lyricsCache[id]; lyricsCache[id] = { status: 'none', artist: L?.artist || '', track: L?.track || '' }; render(); setTimeout(() => $('#lyr-q')?.focus(), 0); } return; }
   if (d.radio) return startRadio(d.radio);
   if ('stopRadio' in d) return stopRadio();
+  if (t.id === 'clear-history') return confirmBox('Clear your listening history?', 'Recently played will be empty. Your library and playlists stay as they are.', 'Clear history', () => { state.history = []; state.recent = []; save(); render(); toast('History cleared'); });
   if (t.id === 'clear-queue') { state.queue = state.queue.slice(0, state.qi + 1); save(); render(); return updateNowPlaying(); }
 });
 // double-click a row to play it
@@ -1174,6 +1216,22 @@ document.addEventListener('keydown', (e) => {
   else if (k === 'v') toggleVideo();
   else if (k === 'l') toggleLyrics();
 });
+
+/* fill in titles for history entries that only have a video id (from older versions) */
+(async () => {
+  const missing = state.history.filter((h) => h.title === h.id || h.title === 'Loading title…').slice(0, 20);
+  for (const h of missing) {
+    const m = await fetchMeta(h.id);
+    if (m) { h.title = m.title; h.author = m.author; }
+  }
+  // queued songs from older versions that lost their titles
+  const unknownQ = [...new Set(state.queue)].filter((id) => meta(id).title === id).slice(0, 30);
+  for (const id of unknownQ) {
+    const m = await fetchMeta(id);
+    if (m) cache[id] = { id, ...m };
+  }
+  if (missing.length || unknownQ.length) { save(); render(); updateNowPlaying(); }
+})();
 
 /* ---------------- boot ---------------- */
 updateControls();

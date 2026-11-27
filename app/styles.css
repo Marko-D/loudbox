@@ -430,3 +430,8 @@ body.blurred .tb-brand { opacity: .6; }
 #bar-lyrics.on { color: var(--accent); }
 @media (max-width: 760px) { .lyrics-view { padding: 20px 16px 40px; } .lyr-head img { width: 72px; } }
 @media (max-height: 420px) { #bar-lyrics { display: none; } }
+
+/* ---------- recently played ---------- */
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.show-all { color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: .02em; }
+.show-all:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
