@@ -1,7 +1,7 @@
 {
   "name": "loudbox",
   "productName": "Loudbox",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A music player that plays YouTube videos as songs.",
   "author": "Loudbox",
   "main": "electron-main.js",
@@ -13,8 +13,17 @@
   "build": {
     "appId": "app.loudbox.player",
     "productName": "Loudbox",
-    "directories": { "output": "dist" },
-    "files": ["electron-main.js", "electron-preload.js", "search.js", "downloader.js", "app/**/*", "package.json"],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron-main.js",
+      "electron-preload.js",
+      "search.js",
+      "downloader.js",
+      "app/**/*",
+      "package.json"
+    ],
     "win": {
       "icon": "app/icon-512.png",
       "signAndEditExecutable": false
