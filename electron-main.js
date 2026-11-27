@@ -14,6 +14,10 @@ const TYPES = {
 };
 
 // Keep one running copy; a second launch focuses the first window.
+// Same id as the installer's shortcuts, so a pinned taskbar icon and the open window group together
+// and show Loudbox's icon.
+app.setAppUserModelId('app.loudbox.player');
+
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 
 function startServer(port, triesLeft = 10) {
