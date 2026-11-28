@@ -4,8 +4,12 @@ A desktop music player for Windows that plays YouTube videos as songs.
 
 ## Download
 
-Get **Loudbox-Setup-x.y.z.exe** from the [latest release](../../releases/latest), run it, and follow the installer.
-There is also a portable `.exe` that runs without installing.
+Open the [latest release](../../releases/latest) and pick one file:
+
+- **Loudbox-Setup-x.y.z.exe**: the installer (recommended). Run it and follow the steps.
+- **Loudbox-Portable-x.y.z.exe**: a single file that runs without installing.
+
+To update, run the new installer over your existing install. Your library, playlists and history are kept.
 
 Windows will show *"Windows protected your PC"* because the app isn't code-signed. Click **More info → Run anyway**.
 
@@ -54,6 +58,10 @@ npm run dist
 The installer and portable `.exe` are written to `dist/`. Keep the project in a short folder path (under ~100 characters), because the installer tool fails on very long paths.
 
 To run it in a browser instead of as an app: `node server.js`, then open http://localhost:4517.
+
+### Making a release
+
+Releases are built on GitHub, not locally. Bump `version` in `package.json`, create a draft release for the new tag (for example `v1.3.0`), then push the tag. The **Release** workflow builds both `.exe` files and attaches them to the draft. Publish the draft once they appear.
 
 ## Disclaimer
 
