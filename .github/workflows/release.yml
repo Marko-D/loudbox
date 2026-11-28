@@ -30,7 +30,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run dist
+      - run: npx electron-builder --win nsis portable --publish never
       - name: Attach the exes to the release
         shell: pwsh
         run: gh release upload $env:TAG (Get-ChildItem dist\Loudbox-*.exe).FullName --clobber
