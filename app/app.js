@@ -24,7 +24,6 @@ const ICON = {
   pause: '<svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>',
   more: '<svg viewBox="0 0 24 24"><path d="M5 10a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm7 0a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm7 0a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg>',
   radio: '<svg viewBox="0 0 24 24"><path d="M12 10a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM7.8 7.8l1.4 1.4a4 4 0 0 0 0 5.6l-1.4 1.4a6 6 0 0 1 0-8.4zm8.4 0a6 6 0 0 1 0 8.4l-1.4-1.4a4 4 0 0 0 0-5.6zM5 5l1.4 1.4a8 8 0 0 0 0 11.2L5 19A10 10 0 0 1 5 5zm14 0a10 10 0 0 1 0 14l-1.4-1.4a8 8 0 0 0 0-11.2z"/></svg>',
-  download: '<svg viewBox="0 0 24 24"><path d="M11 3h2v10.2l3.6-3.6 1.4 1.4-6 6-6-6 1.4-1.4 3.6 3.6zM4 19h16v2H4z"/></svg>',
   done: '<svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>',
   note: '<svg viewBox="0 0 24 24"><path d="M9 3h12v13.5a3.5 3.5 0 1 1-2-3.2V7h-8v11.5A3.5 3.5 0 1 1 9 15.3z"/></svg>',
   mute: '<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zm12.3.3 1.4-1.4 2.3 2.3 2.3-2.3 1.4 1.4-2.3 2.3 2.3 2.3-1.4 1.4-2.3-2.3-2.3 2.3-1.4-1.4 2.3-2.3z"/></svg>',
@@ -48,7 +47,7 @@ function defaultState() {
     songs,
     playlists: [{ id: uid(), name: 'Starter mix', songIds: STARTER.map((s) => s[0]), createdAt: now }],
     queue: [], qi: -1, shuffle: false, repeat: 'off', volume: 80, muted: false,
-    showVideo: true, apiKey: '', recent: [], history: [], downloaded: {}, radio: null, autoRadio: true,
+    apiKey: '', recent: [], history: [], radio: null, autoRadio: true,
   };
 }
 let state;
@@ -478,13 +477,11 @@ function toggleMute() {
   if (playerReady) state.muted ? player.mute() : player.unMute();
   save(); updateControls();
 }
-function toggleVideo() { state.showVideo = !state.showVideo; save(); updateControls(); }
 
 /* ---------------- progress loop ---------------- */
 setInterval(() => {
   if (!playerReady || seeking) return;
   const cur = player.getCurrentTime?.() || 0, dur = player.getDuration?.() || 0;
-  syncLyrics(cur);
   const seek = $('#seek');
   seek.value = dur ? Math.round((cur / dur) * 1000) : 0;
   seek.style.setProperty('--p', (seek.value / 10) + '%');
@@ -509,8 +506,6 @@ function updateControls() {
   $('#btn-shuffle').classList.toggle('on', state.shuffle);
   $('#btn-repeat').classList.toggle('on', state.repeat !== 'off');
   $('#repeat-one').hidden = state.repeat !== 'one';
-  $('#btn-video').classList.toggle('on', state.showVideo);
-  document.querySelector('.app').classList.toggle('no-video', !state.showVideo);
   const vol = $('#volume');
   vol.value = state.muted ? 0 : state.volume;
   vol.style.setProperty('--p', vol.value + '%');
@@ -523,7 +518,6 @@ function updateNowPlaying() {
   $('#np-label').innerHTML = state.radio ? `${ICON.radio}<span>${esc(state.radio.title)} Radio</span><button class="np-stop" data-stop-radio title="Stop radio">Stop</button>` : 'Now playing';
   $('#np-label').classList.toggle('on-radio', !!state.radio);
   $('#bar-radio').classList.toggle('on', !!state.radio);
-  $('#bar-lyrics').classList.toggle('on', view.name === 'lyrics');
   $('#np-title').textContent = s ? s.title : 'Nothing playing';
   $('#np-artist').textContent = s ? s.author : 'Add a YouTube link to get going';
   $('#bar-title').textContent = s ? s.title : 'Nothing playing';
@@ -560,9 +554,8 @@ if ('mediaSession' in navigator) {
   try { ms.setActionHandler('seekto', (d) => player?.seekTo(d.seekTime, true)); } catch {}
 }
 
-/* ---------------- lyrics (from LRCLIB, synced when available) ---------------- */
-const lyricsCache = {};   // song id -> { status: 'loading'|'ok'|'none'|'error', data, lines }
-let lyricsPrevView = null, lyricsActive = -1, lyricsUserScrollAt = 0;
+/* ---------------- lyrics: a web search in the browser ----------------
+   Loudbox doesn't show lyrics itself, because song lyrics need a licence to display. */
 
 function guessArtistTrack(s) {
   let title = String(s.title || '');
@@ -580,80 +573,16 @@ function guessArtistTrack(s) {
   artist = artist.replace(/\s*(,|&|\s(ft\.?|feat\.?|x)\s).*$/i, '').trim();
   return { artist, track };
 }
-function parseLRC(text) {
-  const out = [];
-  for (const raw of text.split(/\r?\n/)) {
-    const stamps = [...raw.matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)];
-    if (!stamps.length) continue;
-    const words = raw.replace(/\[[^\]]*\]/g, '').trim();
-    for (const st of stamps) out.push({ t: Number(st[1]) * 60 + Number(st[2]), text: words });
-  }
-  return out.sort((a, b) => a.t - b.t);
-}
-const durSeconds = (d) => String(d || '').split(':').reduce((a, n) => a * 60 + Number(n), 0) || 0;
-
-async function loadLyrics(id, query) {
-  const s = meta(id);
-  const { artist, track } = guessArtistTrack(s);
-  const dur = (id === currentId() && playerReady && player.getDuration()) || durSeconds(s.duration);
-  lyricsCache[id] = { status: 'loading', artist, track };
-  if (view.name === 'lyrics') render();
-  const params = new URLSearchParams(query ? { q: query } : { artist, track, q: `${artist} ${track}`.trim(), dur: Math.round(dur) || '' });
-  try {
-    const r = await fetch('/api/lyrics?' + params);
-    const data = await r.json();
-    if (!r.ok || data?.error) throw new Error(data?.error || 'failed');
-    lyricsCache[id] = data
-      ? { status: 'ok', data, lines: data.synced ? parseLRC(data.synced) : [], artist, track }
-      : { status: 'none', artist, track, query };
-  } catch {
-    lyricsCache[id] = { status: 'error', artist, track };
-  }
-  if (view.name === 'lyrics' && currentId() === id) render();
-}
-
-function lyricsHTML() {
+function openLyrics() {
   const id = currentId();
-  if (!id) return `<div class="lyrics-view"><div class="lyr-empty"><strong>Nothing playing</strong>Play a song to see its lyrics here.</div></div>`;
-  const s = meta(id);
-  let L = lyricsCache[id];
-  if (!L) { loadLyrics(id); L = lyricsCache[id]; }
-  const head = `<div class="lyr-head"><img src="${thumb(id, 'mqdefault')}" alt=""><div class="lyr-head-text"><div class="eyebrow">Lyrics</div>
-    <div class="lyr-title">${esc(L.data?.track || L.track || s.title)}</div><div class="lyr-artist">${esc(L.data?.artist || L.artist || s.author)}</div></div></div>`;
-  const retry = (msg) => `<div class="lyr-empty"><strong>${msg}</strong>
-      If the title is unusual, try the artist and song name yourself.
-      <form class="field lyr-form" id="lyr-form"><input class="input" id="lyr-q" value="${esc(L.query || `${L.artist} ${L.track}`.trim())}" autocomplete="off" aria-label="Lyrics search"><button class="btn" type="submit">Find lyrics</button></form></div>`;
-  let body;
-  if (L.status === 'loading') body = `<div class="lyr-empty">Looking up lyrics…</div>`;
-  else if (L.status === 'error') body = retry('Couldn’t reach the lyrics service');
-  else if (L.status === 'none') body = retry(`No lyrics found for “${esc(L.track || s.title)}”`);
-  else if (L.data.instrumental && !L.data.plain && !L.data.synced) body = `<div class="lyr-empty"><strong>Instrumental</strong>This song has no lyrics. Enjoy the music.</div>`;
-  else if (L.lines.length) body = `<div class="lyr-lines synced">${L.lines.map((l, i) => `<button class="lyr-line" data-lyr-t="${l.t}" data-lyr-i="${i}">${l.text ? esc(l.text) : '♪'}</button>`).join('')}</div>`;
-  else body = `<div class="lyr-lines plain">${L.data.plain.split(/\r?\n/).map((t) => t.trim() ? `<p>${esc(t)}</p>` : '<p class="gap"></p>').join('')}</div><p class="hint">These lyrics aren’t time-synced.</p>`;
-  return `<div class="lyrics-view">${head}${body}<p class="lyr-credit">Lyrics from <a href="https://lrclib.net" target="_blank" rel="noopener">LRCLIB</a>. Wrong song? <button class="linkish" data-lyr-retry>Search again</button></p></div>`;
+  if (!id) return toast('Nothing is playing');
+  const { artist, track } = guessArtistTrack(meta(id));
+  window.open('https://www.google.com/search?q=' + encodeURIComponent(`${artist} ${track} lyrics`.trim()), '_blank', 'noopener');
 }
-
-function syncLyrics(cur, force = false) {
-  const L = lyricsCache[currentId()];
-  if (view.name !== 'lyrics' || !L || L.status !== 'ok' || !L.lines.length) return;
-  let i = -1;
-  for (let k = 0; k < L.lines.length; k++) { if (L.lines[k].t <= cur + 0.25) i = k; else break; }
-  if (i === lyricsActive && !force) return;
-  lyricsActive = i;
-  const els = document.querySelectorAll('.lyr-line');
-  els.forEach((el, k) => { el.classList.toggle('active', k === i); el.classList.toggle('past', k < i); });
-  if (i >= 0 && Date.now() - lyricsUserScrollAt > 3000) els[i]?.scrollIntoView({ block: 'center', behavior: force ? 'auto' : 'smooth' });
-}
-function toggleLyrics() {
-  if (view.name === 'lyrics') return go(lyricsPrevView && lyricsPrevView.name !== 'lyrics' ? lyricsPrevView : { name: 'home' });
-  lyricsPrevView = view;
-  go({ name: 'lyrics' });
-}
-$('#main').addEventListener('wheel', () => { lyricsUserScrollAt = Date.now(); }, { passive: true });
 
 /* ---------------- views ---------------- */
 /* Vercel Web Analytics: cookieless page counts, website only (never in the desktop app or local runs).
-   Views don't change the URL, so each view is reported as its own page: /home, /search, /lyrics, ... */
+   Views don't change the URL, so each view is reported as its own page: /home, /search, /library, ... */
 const ANALYTICS = !window.loudboxWin && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && location.protocol === 'https:';
 if (ANALYTICS) {
   window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
@@ -686,7 +615,7 @@ function trackList(ids, { context, showAdded = true, when, whenHead = 'Added' } 
     const playingHere = id === cur;
     return `<div class="track ${playingHere ? 'playing' : ''}" data-row="${i}" data-id="${id}">
       <div class="num">${playingHere ? EQ : `<span class="idx">${i + 1}</span>`}<button class="hover-play icon-btn small" data-play-row="${i}" aria-label="Play ${esc(s.title)}">${ICON.play}</button></div>
-      <div class="main-col">${thumbBox(id)}<div class="tt"><div class="title">${dlMark(id)}${esc(s.title)}</div><div class="artist">${esc(s.author)}</div></div></div>
+      <div class="main-col">${thumbBox(id)}<div class="tt"><div class="title">${esc(s.title)}</div><div class="artist">${esc(s.author)}</div></div></div>
       <div class="col">${esc(context?.label || s.author)}</div>
       <div class="when">${when ? when(id) : showAdded && s.addedAt ? ago(s.addedAt) : ''}</div>
       <button class="icon-btn more" data-more="${id}" data-ctx="${context?.playlistId || ''}" data-qi="${context?.queue ? i : ''}" aria-label="More options for ${esc(s.title)}">${ICON.more}</button>
@@ -757,7 +686,6 @@ function render() {
       <div class="hero" style="--hero:#ff7a3d">${cover(pl.songIds)}<div class="hero-text"><div class="eyebrow">Playlist</div><h1>${esc(pl.name)}</h1><div class="stats">${pl.songIds.length} songs</div></div></div>
       <div class="actions">
         <button class="big-play" data-play-view ${isCurrent ? 'data-current' : ''} ${pl.songIds.length ? '' : 'disabled'} aria-label="Play ${esc(pl.name)}">${isCurrent && isPlaying ? ICON.pause : ICON.play}</button>
-        ${DL && pl.songIds.length ? `<button class="btn ghost dl-btn" data-dl-playlist="${pl.id}">${ICON.download}<span>Download playlist</span></button>` : ''}
         <button class="icon-btn" data-pl-menu="${pl.id}" aria-label="Playlist options">${ICON.more}</button>
       </div>
       <div class="section"><form class="field" id="pl-add"><input class="input" id="pl-add-input" placeholder="Paste YouTube links to add them to this playlist" autocomplete="off"><button class="btn ghost" type="submit">Add</button></form></div>
@@ -775,12 +703,6 @@ function render() {
           <input type="checkbox" id="autoplay-toggle" class="switch" role="switch" ${state.autoRadio ? 'checked' : ''}></label></div>
       ${cur ? `<div class="section"><h2>Now playing</h2></div>${queueList([state.qi])}` : '<div class="empty"><strong>Nothing is playing</strong>Play a playlist or a song to fill the queue.</div>'}
       ${upcoming.length ? `<div class="section" style="display:flex;justify-content:space-between;align-items:center"><h2>Next up</h2><button class="btn ghost" id="clear-queue">Clear</button></div>${queueList(upcoming.map((_, k) => state.qi + 1 + k))}` : ''}`;
-  }
-
-  else if (view.name === 'lyrics') {
-    main.innerHTML = lyricsHTML();
-    lyricsActive = -1;
-    requestAnimationFrame(() => syncLyrics(playerReady ? player.getCurrentTime() : 0, true));
   }
 
   else if (view.name === 'search') {
@@ -803,7 +725,7 @@ function render() {
               <button class="float-play" data-search-play="0" aria-label="Play ${esc(top.title)}">${ICON.play}</button>
             </div>
             <div class="top-actions"><button class="btn ghost save-top" data-search-add="0">${saved ? '✓ Saved' : '+ Save to library'}</button>
-              <button class="btn ghost dl-btn" data-radio="${top.id}">${ICON.radio}<span>Start radio</span></button></div>
+              <button class="btn ghost pill-btn" data-radio="${top.id}">${ICON.radio}<span>Start radio</span></button></div>
           </div>
           <div class="top-songs"><h2>Songs</h2>${searchList(1, 5)}</div>
         </div>
@@ -840,7 +762,7 @@ function queueList(indices) {
     const s = meta(id);
     return `<div class="track ${qi === cur ? 'playing' : ''}" data-id="${id}" data-q-row="${qi}">
       <div class="num">${qi === cur ? EQ : `<span class="idx">${qi - cur}</span>`}<button class="hover-play icon-btn small" data-jump="${qi}" aria-label="Play">${ICON.play}</button></div>
-      <div class="main-col">${thumbBox(id)}<div class="tt"><div class="title">${dlMark(id)}${esc(s.title)}</div><div class="artist">${esc(s.author)}</div></div></div>
+      <div class="main-col">${thumbBox(id)}<div class="tt"><div class="title">${esc(s.title)}</div><div class="artist">${esc(s.author)}</div></div></div>
       <div class="col"></div><div class="when"></div>
       <button class="icon-btn more" data-more="${id}" data-qi="${qi}" aria-label="More options">${ICON.more}</button></div>`;
   }).join('')}</div>`;
@@ -888,7 +810,6 @@ function songMenu(anchor, id, { playlistId, qi } = {}) {
     '-',
     { text: 'Play next', run: () => playNext(id) },
     { text: 'Add to queue', run: () => addToQueue(id) },
-    ...(DL ? [{ text: state.downloaded[id] ? 'Download again' : 'Download', run: () => downloadSongs([id]) }] : []),
     ...(state.songs[id] ? [] : [{ text: 'Save to library', run: () => { saveSong(meta(id)); render(); toast('Saved to your library'); } }]),
   ];
   if (qi !== undefined && qi !== '' && Number(qi) !== state.qi) items.push({ text: 'Remove from queue', run: () => { removeFromQueue(Number(qi)); } });
@@ -1020,15 +941,9 @@ document.addEventListener('click', (e) => {
     return toast('Already in your library');
   }
   if (d.searchMore !== undefined) { e.stopPropagation(); return songMenu(t, searchResults[Number(d.searchMore)].id); }
-  if (d.dlPlaylist) return downloadPlaylist(d.dlPlaylist);
-  if (d.dlRetry) return DL.retry(d.dlRetry);
-  if (d.dlCancel) return DL.cancel(d.dlCancel);
-  if (d.dlShow) return DL.showFile(d.dlShow);
   if (d.idea) { $('#tb-search-input').value = d.idea; return ytSearch(d.idea); }
   if (d.suggest) return runTopSearch(d.suggest);
   if (t.id === 'edit-key') return keyBox();
-  if (d.lyrT !== undefined) { if (playerReady) { player.seekTo(Number(d.lyrT), true); player.playVideo(); } lyricsUserScrollAt = 0; return; }
-  if ('lyrRetry' in d) { const id = currentId(); if (id) { const L = lyricsCache[id]; lyricsCache[id] = { status: 'none', artist: L?.artist || '', track: L?.track || '' }; render(); setTimeout(() => $('#lyr-q')?.focus(), 0); } return; }
   if (d.radio) return startRadio(d.radio);
   if ('stopRadio' in d) return stopRadio();
   if (t.id === 'clear-history') return confirmBox('Clear your listening history?', 'Recently played will be empty. Your library and playlists stay as they are.', 'Clear history', () => { state.history = []; state.recent = []; save(); render(); toast('History cleared'); });
@@ -1047,12 +962,6 @@ document.addEventListener('submit', async (e) => {
     const input = f.querySelector('input');
     const ok = await handleAdd(input.value, f.id === 'pl-add' ? { toPlaylist: view.id } : {});
     if (ok) input.value = '';
-  }
-  if (f.id === 'lyr-form') {
-    e.preventDefault();
-    const q = $('#lyr-q').value.trim();
-    if (q && currentId()) loadLyrics(currentId(), q);
-    return;
   }
   if (f.id === 'search-form' || f.id === 'tb-search') {
     e.preventDefault();
@@ -1081,11 +990,9 @@ $('#btn-prev').onclick = prev;
 $('#btn-shuffle').onclick = toggleShuffle;
 $('#btn-repeat').onclick = cycleRepeat;
 $('#btn-mute').onclick = toggleMute;
-$('#btn-video').onclick = toggleVideo;
 $('#new-playlist').onclick = () => newPlaylist();
 $('#bar-radio').onclick = () => { const id = currentId(); if (!id) return toast('Play a song first, then start its radio'); state.radio && state.radio.seed === id ? stopRadio() : startRadio(id); };
-$('#bar-lyrics').onclick = toggleLyrics;
-$('#bar-dl').onclick = () => { const id = currentId(); if (id) downloadSongs([id]); else toast('Nothing is playing'); };
+$('#bar-lyrics').onclick = openLyrics;
 const ICON_PLUS = '<svg viewBox="0 0 24 24"><path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z"/></svg>';
 const ICON_SAVED = '<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm4.3 6.3L10.5 14l-2.8-2.8-1.4 1.4 4.2 4.2 7.2-7.1z"/></svg>';
 function updateSaveButton() {
@@ -1140,93 +1047,6 @@ tbInput.addEventListener('keydown', (e) => {
   tbInput.value = items[suggestIdx].dataset.suggest;
 });
 
-/* ---------------- downloads (desktop app only) ---------------- */
-const DL = window.loudboxDl;
-let dlJobs = [];
-function dlMark(id) {
-  return DL && state.downloaded[id] ? `<span class="dl-mark" title="Downloaded">${ICON.done}</span>` : '';
-}
-async function downloadSongs(ids, playlistName = '') {
-  if (!DL) return toast('Downloads work in the Loudbox desktop app');
-  const songs = ids.map((id) => meta(id)).map((s) => ({ id: s.id, title: s.title, author: s.author }));
-  const added = await DL.add(songs, playlistName);
-  if (!added) toast(ids.length === 1 ? 'Already downloading' : 'Those songs are already downloading');
-  else toast(added === 1 ? `Downloading “${songs[0].title}”` : `Downloading ${added} songs`);
-}
-function downloadPlaylist(plId) {
-  const pl = state.playlists.find((p) => p.id === plId);
-  if (!pl || !pl.songIds.length) return toast('This playlist is empty');
-  downloadSongs(pl.songIds, pl.name);
-}
-const DL_STATUS = { queued: 'Waiting…', starting: 'Starting…', 'getting-tool': 'Getting the downloader (first time only)…', downloading: '', done: 'Saved', failed: 'Failed', cancelled: 'Cancelled' };
-function renderDownloads() {
-  if (!DL) return;
-  const active = dlJobs.filter((j) => !['done', 'failed'].includes(j.status));
-  const badge = $('#dl-badge');
-  badge.hidden = !active.length;
-  badge.textContent = active.length > 99 ? '99+' : active.length;
-  const ring = $('#dl-ring');
-  const running = dlJobs.filter((j) => j.status === 'downloading');
-  ring.hidden = !active.length;
-  const pct = active.length ? active.reduce((a, j) => a + (j.percent || 0), 0) / active.length : 0;
-  ring.style.setProperty('--p', pct.toFixed(0) + '%');
-  $('#dl-toggle').classList.toggle('busy', running.length > 0);
-  if ($('#dl-panel').hidden) return;
-  const list = $('#dl-list');
-  if (!dlJobs.length) {
-    list.innerHTML = '<p class="hint dl-empty">Nothing downloaded yet. Use the download button on a song, in the player bar, or on a playlist.</p>';
-    return;
-  }
-  list.innerHTML = dlJobs.slice().reverse().map((j) => {
-    const k = esc(j.key);
-    const status = j.status === 'downloading' ? `${Math.round(j.percent)}%` : j.status === 'failed' ? `Failed: ${esc(j.error)}` : DL_STATUS[j.status] || j.status;
-    const action = j.status === 'done' ? `<button class="icon-btn small" data-dl-show="${esc(j.file)}" title="Show in folder" aria-label="Show in folder"><svg viewBox="0 0 24 24"><path d="M3 5h7l2 2h9v12H3zm2 4v8h14V9z"/></svg></button>`
-      : j.status === 'failed' ? `<button class="icon-btn small" data-dl-retry="${k}" title="Try again" aria-label="Try again"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>`
-      : `<button class="icon-btn small" data-dl-cancel="${k}" title="Cancel" aria-label="Cancel"><svg viewBox="0 0 24 24"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4z"/></svg></button>`;
-    return `<div class="dl-item ${j.status}">
-      <img src="${thumb(j.id, 'default')}" alt="" loading="lazy">
-      <div class="dl-meta"><div class="t">${esc(j.title)}</div>
-        <div class="dl-status">${status}</div>
-        ${['downloading', 'starting', 'getting-tool', 'queued'].includes(j.status) ? `<div class="dl-bar"><i style="width:${j.percent || 0}%"></i></div>` : ''}
-      </div>${action}</div>`;
-  }).join('');
-}
-function onDlJobs(jobs) {
-  const before = new Set(dlJobs.filter((j) => j.status === 'done').map((j) => j.key));
-  dlJobs = jobs;
-  let changed = false;
-  for (const j of jobs) {
-    if (j.status === 'done' && !state.downloaded[j.id]) { state.downloaded[j.id] = true; changed = true; }
-    if (j.status === 'done' && !before.has(j.key) && jobs.filter((x) => x.status !== 'done' && x.status !== 'failed').length === 0) {
-      toast(jobs.length > 1 ? 'All downloads finished' : `Downloaded “${j.title}”`);
-    }
-  }
-  if (changed) { save(); render(); }
-  renderDownloads();
-}
-async function toggleDlPanel(force) {
-  const panel = $('#dl-panel');
-  const open = force ?? panel.hidden;
-  panel.hidden = !open;
-  $('#dl-toggle').setAttribute('aria-expanded', String(open));
-  if (open) { $('#dl-folder-path').textContent = await DL.folder(); renderDownloads(); }
-}
-if (DL) {
-  $('#bar-dl').hidden = false;
-  DL.onJobs(onDlJobs);
-  DL.list().then(onDlJobs);
-  $('#dl-toggle').onclick = (e) => { e.stopPropagation(); toggleDlPanel(); };
-  $('#dl-close').onclick = () => toggleDlPanel(false);
-  $('#dl-open').onclick = () => DL.openFolder();
-  $('#dl-change').onclick = async () => { $('#dl-folder-path').textContent = await DL.chooseFolder(); };
-  $('#dl-clear').onclick = () => DL.clearFinished();
-  document.addEventListener('mousedown', (e) => {
-    if (!$('#dl-panel').hidden && !e.target.closest('#dl-panel, #dl-toggle')) toggleDlPanel(false);
-  });
-} else {
-  $('#dl-toggle').hidden = true;
-}
-
 /* custom window frame (desktop app only) */
 const W = window.loudboxWin;
 function applyWinState(s) {
@@ -1279,8 +1099,7 @@ document.addEventListener('keydown', (e) => {
   else if (k === 's') toggleShuffle();
   else if (k === 'r') cycleRepeat();
   else if (k === 'm') toggleMute();
-  else if (k === 'v') toggleVideo();
-  else if (k === 'l') toggleLyrics();
+  else if (k === 'l') openLyrics();
 });
 
 /* fill in titles for history entries that only have a video id (from older versions) */

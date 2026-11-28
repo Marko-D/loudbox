@@ -6,6 +6,7 @@
   "author": "Loudbox",
   "main": "electron-main.js",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win nsis portable"
@@ -20,7 +21,6 @@
       "electron-main.js",
       "electron-preload.js",
       "youtube.js",
-      "downloader.js",
       "app/**/*",
       "package.json"
     ],
@@ -45,5 +45,8 @@
     "electron": "33.2.1",
     "electron-builder": "25.1.8",
     "rcedit": "^4.0.1"
+  },
+  "allowScripts": {
+    "electron@33.2.1": true
   }
 }
