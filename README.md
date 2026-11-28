@@ -9,7 +9,7 @@ There is also a portable `.exe` that runs without installing.
 
 Windows will show *"Windows protected your PC"* because the app isn't code-signed. Click **More info → Run anyway**.
 
-Prefer the browser? Use it at **https://loudbox-six.vercel.app** (no downloads or mini player there).
+Prefer the browser? Use it at **https://loudbox-six.vercel.app** (no mini player there).
 The website counts page views with Vercel Web Analytics, which uses no cookies and no personal data.
 
 ## Features
@@ -17,8 +17,7 @@ The website counts page views with Vercel Web Analytics, which uses no cookies a
 - **Search** songs and artists, with suggestions as you type (no API key needed)
 - **Library and playlists**: save songs, build playlists, import whole YouTube playlists by link
 - **Radio**: start a radio from any song for an endless queue of similar music
-- **Synced lyrics** that follow the song (from [LRCLIB](https://lrclib.net))
-- **Downloads**: save a song or a whole playlist as `.m4a` audio (uses [yt-dlp](https://github.com/yt-dlp/yt-dlp), fetched on first use)
+- **Find lyrics**: one click searches the web for the song's lyrics
 - **Mini player**: shrink the window and it becomes a compact player; pin it on top of other windows
 - Shuffle, repeat, queue, media keys, keyboard shortcuts
 
@@ -32,16 +31,16 @@ The website counts page views with Vercel Web Analytics, which uses no cookies a
 | ↑ / ↓ | Volume |
 | Ctrl + K or / | Search |
 | S / R | Shuffle / repeat |
-| L | Lyrics |
+| L | Find lyrics on the web |
 | P | Pin on top |
-| V / M | Show video / mute |
+| M | Mute |
 
 ## Notes
 
 - Your library lives on your own computer. Nothing is uploaded anywhere.
 - Some videos can't be played outside YouTube because their owners disabled embedding; Loudbox skips them.
-- Only download music you have the right to keep. Downloading from YouTube is against YouTube's Terms of Service for most videos.
-- Search, radio and lyrics read public YouTube and LRCLIB pages. If YouTube changes its pages, these may stop working until Loudbox is updated.
+- Songs play in YouTube's own embedded player, which stays visible while a song plays. Loudbox doesn't download songs or show lyrics.
+- Search and radio read public YouTube pages. If YouTube changes its pages, these may stop working until Loudbox is updated.
 
 ## Build from source
 
@@ -55,3 +54,11 @@ npm run dist
 The installer and portable `.exe` are written to `dist/`. Keep the project in a short folder path (under ~100 characters), because the installer tool fails on very long paths.
 
 To run it in a browser instead of as an app: `node server.js`, then open http://localhost:4517.
+
+## Disclaimer
+
+Loudbox is an independent project. It is not affiliated with, endorsed by or sponsored by YouTube or Google. YouTube is a trademark of Google LLC. All songs and videos belong to their owners and are played through YouTube's embedded player.
+
+## License
+
+[MIT](LICENSE)

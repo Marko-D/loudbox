@@ -1,7 +1,6 @@
 // Loudbox desktop app (Electron). Serves the app folder on 127.0.0.1 because
 // YouTube's embedded player refuses to play from file:// pages.
-const { app, BrowserWindow, shell, Menu, ipcMain, screen, dialog } = require('electron');
-const { Downloader, safeName } = require('./downloader');
+const { app, BrowserWindow, shell, Menu, ipcMain, screen } = require('electron');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -77,7 +76,7 @@ async function createWindow() {
   win = new BrowserWindow({
     width: saved.width || 1320, height: saved.height || 840,
     x: saved.x, y: saved.y,
-    minWidth: 340, minHeight: 200,
+    minWidth: 380, minHeight: 250, // room for the 200x200 minimum player
     frame: false,
     resizable: true,
     backgroundColor: '#100e1a',
@@ -117,49 +116,6 @@ ipcMain.handle('win:toggle-pin', () => {
   return winState();
 });
 ipcMain.handle('win:state', () => winState());
-
-/* ---- downloads ---- */
-const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
-function readSettings() { try { return JSON.parse(fs.readFileSync(SETTINGS_FILE(), 'utf8')); } catch { return {}; } }
-function writeSettings(s) { try { fs.writeFileSync(SETTINGS_FILE(), JSON.stringify(s, null, 2)); } catch {} }
-const downloadFolder = () => readSettings().downloadFolder || path.join(app.getPath('music'), 'Loudbox');
-
-let downloader;
-app.whenReady().then(() => {
-  downloader = new Downloader({
-    dataDir: app.getPath('userData'),
-    getFolder: downloadFolder,
-    emit: (jobs) => { if (win && !win.isDestroyed()) win.webContents.send('dl:jobs', jobs); },
-  });
-});
-const cleanSongs = (songs) => (Array.isArray(songs) ? songs : [])
-  .filter((s) => s && /^[\w-]{11}$/.test(s.id))
-  .map((s) => ({ id: s.id, title: String(s.title || '').slice(0, 300), author: String(s.author || '').slice(0, 200) }));
-
-ipcMain.handle('dl:add', (_e, songs, playlistName) => downloader.add(cleanSongs(songs), playlistName ? String(playlistName) : ''));
-ipcMain.handle('dl:list', () => downloader.list());
-ipcMain.handle('dl:cancel', (_e, key) => downloader.cancel(String(key)));
-ipcMain.handle('dl:retry', (_e, key) => downloader.retry(String(key)));
-ipcMain.handle('dl:clear', () => downloader.clearFinished());
-ipcMain.handle('dl:update-tool', () => downloader.update());
-ipcMain.handle('dl:folder', () => downloadFolder());
-ipcMain.handle('dl:choose-folder', async () => {
-  const r = await dialog.showOpenDialog(win, { title: 'Choose where Loudbox saves downloads', defaultPath: downloadFolder(), properties: ['openDirectory', 'createDirectory'] });
-  if (r.canceled || !r.filePaths[0]) return downloadFolder();
-  writeSettings({ ...readSettings(), downloadFolder: r.filePaths[0] });
-  return r.filePaths[0];
-});
-ipcMain.handle('dl:open-folder', async (_e, sub) => {
-  const base = downloadFolder();
-  const target = sub ? path.join(base, safeName(String(sub), 'Playlist')) : base;
-  fs.mkdirSync(fs.existsSync(target) ? target : base, { recursive: true });
-  return shell.openPath(fs.existsSync(target) ? target : base);
-});
-ipcMain.handle('dl:show-file', (_e, file) => {
-  // only reveal files inside the download folder
-  const f = path.normalize(String(file));
-  if (f.startsWith(path.normalize(downloadFolder())) && fs.existsSync(f)) shell.showItemInFolder(f);
-});
 
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 app.whenReady().then(createWindow);

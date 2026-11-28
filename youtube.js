@@ -102,44 +102,10 @@ async function radio(videoId) {
   return list;
 }
 
-// Lyrics from LRCLIB (free, open lyrics database with time-synced lines).
-async function lyrics({ artist, track, q, duration }) {
-  const H = { 'User-Agent': 'Loudbox/1.0 (desktop music player)' };
-  const enc = encodeURIComponent;
-  const urls = [];
-  if (artist && track) urls.push(`https://lrclib.net/api/search?track_name=${enc(track)}&artist_name=${enc(artist)}`);
-  if (track) urls.push(`https://lrclib.net/api/search?q=${enc(((artist || '') + ' ' + track).trim())}`);
-  if (q) urls.push(`https://lrclib.net/api/search?q=${enc(q)}`);
-  const dur = Number(duration) || 0;
-  for (const url of urls) {
-    const r = await fetch(url, { headers: H });
-    if (!r.ok) continue;
-    const list = (await r.json()).filter((x) => x.syncedLyrics || x.plainLyrics || x.instrumental);
-    if (!list.length) continue;
-    const score = (x) => (x.syncedLyrics ? 0 : 40) + (dur && x.duration ? Math.min(60, Math.abs(dur - x.duration)) : 0);
-    const best = list.sort((a, b) => score(a) - score(b))[0];
-    // a duration far from the video's usually means a different song or version
-    if (dur && best.duration && Math.abs(dur - best.duration) > 45 && list.length > 1 && !best.syncedLyrics) continue;
-    return {
-      track: best.trackName, artist: best.artistName, album: best.albumName, duration: best.duration,
-      instrumental: !!best.instrumental, synced: best.syncedLyrics || '', plain: best.plainLyrics || '',
-    };
-  }
-  return null;
-}
-
 // Shared HTTP handler: returns true when it answered the request.
 async function handleApi(req, res) {
   const u = new URL(req.url, 'http://x');
-  if (!['/api/search', '/api/suggest', '/api/radio', '/api/lyrics'].includes(u.pathname)) return false;
-  if (u.pathname === '/api/lyrics') {
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store');
-    const g = (k) => (u.searchParams.get(k) || '').trim().slice(0, 200);
-    try { res.end(JSON.stringify(await lyrics({ artist: g('artist'), track: g('track'), q: g('q'), duration: g('dur') }))); }
-    catch (e) { res.statusCode = 502; res.end(JSON.stringify({ error: e.message || 'Lyrics lookup failed' })); }
-    return true;
-  }
+  if (!['/api/search', '/api/suggest', '/api/radio'].includes(u.pathname)) return false;
   const q = (u.searchParams.get('q') || '').trim().slice(0, 200);
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -154,4 +120,4 @@ async function handleApi(req, res) {
   return true;
 }
 
-module.exports = { searchYouTube, suggest, radio, lyrics, handleApi };
+module.exports = { searchYouTube, suggest, radio, handleApi };
