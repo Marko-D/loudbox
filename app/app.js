@@ -581,24 +581,7 @@ function openLyrics() {
 }
 
 /* ---------------- views ---------------- */
-/* Vercel Web Analytics: cookieless page counts, website only (never in the desktop app or local runs).
-   Views don't change the URL, so each view is reported as its own page: /home, /search, /library, ... */
-const ANALYTICS = !window.loudboxWin && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && location.protocol === 'https:';
-if (ANALYTICS) {
-  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
-  const sc = document.createElement('script');
-  sc.defer = true;
-  sc.src = '/_vercel/insights/script.js';
-  sc.dataset.disableAutoTrack = '1';
-  document.head.appendChild(sc);
-}
-function trackView(name) {
-  if (!ANALYTICS) return;
-  const path = name === 'home' ? '/' : '/' + name; // playlist ids stay out of analytics
-  window.va('pageview', { route: path, path });
-}
-
-function go(v) { const changed = v.name !== view.name; view = v; render(); $('#main').scrollTop = 0; closeMenu(); if (changed) trackView(v.name); }
+function go(v) { view = v; render(); $('#main').scrollTop = 0; closeMenu(); }
 
 function cover(ids, cls = '') {
   const pics = ids.slice(0, 4);
@@ -1122,7 +1105,6 @@ document.addEventListener('keydown', (e) => {
 updateControls();
 render();
 updateNowPlaying();
-trackView(view.name);
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }

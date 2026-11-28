@@ -13,8 +13,7 @@ To update, run the new installer over your existing install. Your library, playl
 
 Windows will show *"Windows protected your PC"* because the app isn't code-signed. Click **More info → Run anyway**.
 
-Prefer the browser? Use it at **https://loudbox-six.vercel.app** (no mini player there).
-The website counts page views with Vercel Web Analytics, which uses no cookies and no personal data.
+Prefer the browser? Run it from source (see below) with `node server.js`.
 
 ## Features
 
