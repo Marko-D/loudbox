@@ -1,0 +1,36 @@
+# Builds the Windows installer and portable exe on GitHub's machines and attaches them
+# to the release for the pushed tag. Usage: create the release (draft is fine), then
+# push its tag, e.g. `git tag v1.2.0 && git push origin v1.2.0`.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and attach to (e.g. v1.2.0)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run dist
+      - name: Attach the exes to the release
+        shell: pwsh
+        run: gh release upload $env:TAG (Get-ChildItem dist\Loudbox-*.exe).FullName --clobber
